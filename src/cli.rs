@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, BufReader, ErrorKind, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::process;
@@ -63,8 +63,22 @@ impl CLIListener {
         // For other errors, we should probably inform users to aide debugging.
         // I don't love the idea of spamming stderr here, however.
         match self.listener.accept() {
-            Ok((socket, _addr)) => match handle_socket_message(manager, el, socket) {
-                Ok(_) => (),
+            Ok((mut socket, _addr)) => match handle_socket_message(manager, el, &socket) {
+                Ok(replies) => {
+                    let mut writer = BufWriter::new(socket);
+                    eprint!("I got replies {:?}", replies);
+                    for reply in replies {
+                        match reply {
+                            SocketMessageReply::NoReply => (),
+                            SocketMessageReply::DndStatus(_) => {
+                                eprintln!("trying to write...");
+                                let res = writer.write("foo".as_bytes());
+                                eprintln!("writing was {:?}", res);
+                                eprintln!("done writing.");
+                            },
+                        }
+                    }
+                },
                 Err(e) => eprintln!("Error while handling socket message: {:?}", e),
             },
             Err(e) => {
@@ -105,12 +119,20 @@ fn get_window_id(arg: &str, manager: &NotifyWindowManager) -> Result<WindowId, C
     }
 }
 
+#[derive(Debug)]
+pub enum SocketMessageReply {
+    NoReply,
+    DndStatus(bool),
+}
+
 pub fn handle_socket_message(
     manager: &mut NotifyWindowManager,
     el: &EventLoopWindowTarget<()>,
-    stream: UnixStream,
-) -> Result<(), CLIError> {
+    stream: &UnixStream,
+) -> Result<Vec<SocketMessageReply>, CLIError> {
     let stream = BufReader::new(stream);
+
+    let mut replies = vec![];
     for line in stream.lines() {
         let line = match line {
             Ok(l) => l,
@@ -173,6 +195,11 @@ pub fn handle_socket_message(
                         manager.set_dnd(false);
                     }
                 }
+                "dnd-status" => {
+                    eprintln!("got dnd-status command");
+                    replies.push(SocketMessageReply::DndStatus(manager.dnd));
+                    continue;
+                }
                 "kill" => {
                     manager.should_exit = true;
                 }
@@ -181,9 +208,11 @@ pub fn handle_socket_message(
         } else {
             return Err(CLIError::Parse("Malformed command."));
         }
+
+        replies.push(SocketMessageReply::NoReply);
     }
 
-    Ok(())
+    Ok(replies)
 }
 
 // CLI stuff:
@@ -242,6 +271,7 @@ pub fn process_cli(args: Vec<String>) -> Result<ShouldRun, String> {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     opts.optopt("z", "dnd", "enable/disable do not disturb mode", "[on|off]");
+    opts.optflag("Z", "dnd-status", "get do not disturb mode status");
     opts.optopt("d", "drop", "drop/close a notification", "[latest|all|IDX]");
     opts.optopt(
         "a",
@@ -281,6 +311,7 @@ pub fn process_cli(args: Vec<String>) -> Result<ShouldRun, String> {
         || matches.opt_present("a")
         || matches.opt_present("s")
         || matches.opt_present("z")
+        || matches.opt_present("Z")
         || matches.opt_present("x")
     {
         let mut sock = match UnixStream::connect(SOCKET_PATH) {
@@ -332,6 +363,19 @@ pub fn process_cli(args: Vec<String>) -> Result<ShouldRun, String> {
 
             sock.write(format!("dnd:{}", on_off).as_bytes())
                 .map_err(|e| e.to_string())?;
+        }
+
+        if matches.opt_present("Z") {
+            sock.write("dnd-status:".as_bytes())
+                .map_err(|e|e.to_string())?;
+            let flush_res = sock.flush();
+            eprint!("flushing was {:?}", flush_res);
+
+            let mut stream = BufReader::new(&sock);
+            let mut buf = String::new();
+            eprint!("starting to read from buf");
+            let read_res = stream.read_to_string(&mut buf);
+            eprintln!("Reading was {:?}, of value {}", read_res, buf)
         }
 
         if let Some(to_show) = matches.opt_str("s") {

@@ -69,7 +69,7 @@ pub struct NotifyWindowManager {
     pub should_exit: bool,
 
     // Do not disturb.
-    dnd: bool,
+    pub dnd: bool,
     // For "expensive" updates that don't have to happen every frame.
     slow_update_timer: f32,
     // The idle timer last frame, from xss.

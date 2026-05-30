@@ -2,6 +2,8 @@ use std::io::{self, BufRead, BufReader, BufWriter, ErrorKind, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::process;
+use std::thread::sleep;
+use std::time::Duration;
 
 use getopts::Options;
 use winit::event_loop::EventLoopWindowTarget;
@@ -371,11 +373,12 @@ pub fn process_cli(args: Vec<String>) -> Result<ShouldRun, String> {
             let flush_res = sock.flush();
             eprint!("flushing was {:?}", flush_res);
 
-            let mut stream = BufReader::new(&sock);
-            let mut buf = String::new();
-            eprint!("starting to read from buf");
-            let read_res = stream.read_to_string(&mut buf);
-            eprintln!("Reading was {:?}, of value {}", read_res, buf)
+            sleep(Duration::from_secs(5));
+
+            // let mut stream = BufReader::new(&sock);
+            // let mut buf = vec![0;1];
+            // let read_res = stream.read_exact(buf.as_mut_slice());
+            // eprintln!("Reading was {:?}, of value {:?}", read_res, buf)
         }
 
         if let Some(to_show) = matches.opt_str("s") {

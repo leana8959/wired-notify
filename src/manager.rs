@@ -13,14 +13,13 @@ use crate::config::FollowMode;
 use crate::{
     //notification::Notification,
     bus,
-    bus::dbus::Urgency,
     bus::dbus::Notification,
     bus::dbus_codegen::{
         OrgFreedesktopNotificationsActionInvoked, OrgFreedesktopNotificationsNotificationClosed,
     },
     config::Config,
     maths_utility::{self, Rect},
-    rendering::layout::LayoutBlock,
+    rendering::layout::{criteria_matches, LayoutBlock},
     rendering::window::{NotifyWindow, UpdateModes},
 };
 
@@ -144,8 +143,8 @@ impl NotifyWindowManager {
             dbg!(self.dnd, &notification);
         }
 
-        // Ignore non-urgent notification when dnd is on.
-        if self.dnd && notification.urgency < Urgency::Critical {
+        // Show nothing unless dnd allow criteria says so.
+        if self.dnd && !criteria_matches(&cfg.dnd_allow_render_criteria, &notification) {
             return;
         }
 

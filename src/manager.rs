@@ -9,12 +9,12 @@ use winit::{
     event_loop::EventLoopWindowTarget, monitor::MonitorHandle, window::WindowId,
 };
 
-use crate::config::FollowMode;
+use crate::config::{FollowMode, CONFIG};
 use crate::{
     //notification::Notification,
     bus,
-    bus::dbus::Urgency,
     bus::dbus::Notification,
+    bus::dbus::Urgency,
     bus::dbus_codegen::{
         OrgFreedesktopNotificationsActionInvoked, OrgFreedesktopNotificationsNotificationClosed,
     },
@@ -83,7 +83,7 @@ impl NotifyWindowManager {
         // Create a map for each layout type, which allows us to easily keep track of different
         // layouts later.
         let mut layout_windows = HashMap::new();
-        for layout in &Config::get().layouts {
+        for layout in &CONFIG.load().layouts {
             layout_windows.insert(layout.name.to_owned(), vec![]);
         }
 
@@ -97,7 +97,7 @@ impl NotifyWindowManager {
         Self {
             base_window,
             layout_windows,
-            history: NotifyHistory::new(Config::get().history_length),
+            history: NotifyHistory::new(CONFIG.load().history_length),
             dirty: false,
 
             dnd: false,
@@ -111,7 +111,7 @@ impl NotifyWindowManager {
 
     // Summon a new notification.
     pub fn new_notification(&mut self, notification: Notification, el: &EventLoopWindowTarget<()>) {
-        for layout in &Config::get().layouts {
+        for layout in &CONFIG.load().layouts {
             // Spawn a new window for each "root" layout that should be drawn.
             // If this layout doesn't meet any criteria, skip, obviously.
             if !notification_meets_layout_criteria(layout, &notification) {
@@ -127,7 +127,7 @@ impl NotifyWindowManager {
                 windows.push(window);
 
                 // If we've exceeded max notifications, then mark the top-most one for destroy.
-                let cfg = Config::get();
+                let cfg = CONFIG.load();
                 if cfg.max_notifications > 0 && windows.len() > cfg.max_notifications {
                     windows.first_mut().unwrap().marked_for_destroy = true;
                 }
@@ -139,7 +139,7 @@ impl NotifyWindowManager {
     }
 
     pub fn replace_or_spawn(&mut self, notification: Notification, el: &EventLoopWindowTarget<()>) {
-        let cfg = Config::get();
+        let cfg = CONFIG.load();
         if cfg.debug {
             dbg!(self.dnd, &notification);
         }
@@ -150,7 +150,13 @@ impl NotifyWindowManager {
         }
 
         // We need to match a layout at least to be able to show anything -- new or otherwise.
-        if let Some(layout) = find_matching_layout(&notification) {
+
+        let cfg = CONFIG.load();
+        let matched_layout_block = cfg
+            .layouts
+            .iter()
+            .find(|&layout| notification_meets_layout_criteria(layout, &notification));
+        if let Some(layout) = matched_layout_block {
             // Find any windows that have the same id, or the same app name and tag.
             // If one exists then we should replace that (if replacing is enabled).
             let mut maybe_windows = vec![];
@@ -176,7 +182,7 @@ impl NotifyWindowManager {
     }
 
     pub fn update(&mut self, delta_time: Duration) {
-        let cfg = Config::get();
+        let cfg = CONFIG.load();
 
         // Idle threshold granularity is 1s,
         // but I want to update active monitor faster than that.
@@ -248,7 +254,7 @@ impl NotifyWindowManager {
                     // window would still be in the array here.
                     // A fix may be to write notifications to history as soon as we receive them,
                     // but then we need to keep track of which notifications are active and stuff.
-                    if self.history.len() + 1 > Config::get().history_length {
+                    if self.history.len() + 1 > CONFIG.load().history_length {
                         let _ = self.history.pop_front();
                     }
                     self.history.push(window.notification.clone());
@@ -265,7 +271,7 @@ impl NotifyWindowManager {
     }
 
     fn update_positions(&mut self) {
-        let cfg = Config::get();
+        let cfg = CONFIG.load();
         for (layout_name, windows) in &self.layout_windows {
             // If there are no windows for this layout, leave it alone.
             if windows.is_empty() {
@@ -396,7 +402,7 @@ impl NotifyWindowManager {
             return;
         }
 
-        let config = Config::get();
+        let config = CONFIG.load();
         if pressed == config.shortcuts.notification_interact {
             if let Some(window) = self.find_window_mut(window_id) {
                 window.process_mouse_click();
@@ -611,7 +617,7 @@ impl NotifyWindowManager {
 }
 
 fn maybe_get_active_monitor(base_window: &winit::window::Window) -> Option<MonitorHandle> {
-    let cfg = Config::get();
+    let cfg = CONFIG.load();
     if cfg.is_auto_active_monitor {
         match cfg.focus_follows {
             FollowMode::Mouse => maths_utility::get_active_monitor_mouse(base_window),
@@ -639,18 +645,6 @@ fn notification_meets_layout_criteria(root: &LayoutBlock, notification: &Notific
     }
 
     false
-}
-
-fn find_matching_layout(notification: &Notification) -> Option<&LayoutBlock> {
-    for layout in &Config::get().layouts {
-        // Spawn a new window for each "root" layout that should be drawn.
-        // If this layout doesn't meet any criteria, skip, obviously.
-        if notification_meets_layout_criteria(layout, notification) {
-            return Some(layout);
-        }
-    }
-
-    None
 }
 
 // Checks if this block should be drawn (according to render criteria for each block).

@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::bus;
 use crate::bus::dbus_codegen::OrgFreedesktopNotificationsActionInvoked;
-use crate::config::{Color, Config, Padding};
+use crate::config::{Color, Config, Padding, CONFIG};
 use crate::maths_utility;
 use crate::maths_utility::{MinMax, Rect, Vec2};
 use crate::rendering::{
@@ -133,7 +133,7 @@ impl DrawableLayoutElement for ButtonBlockParameters {
             .paint_padded(&window.context, &pos, text_col, &self.padding);
 
         // Debug, unpadded drawing, to help users.
-        if Config::get().debug {
+        if CONFIG.load().debug {
             let r = window
                 .text
                 .get_sized_rect(self.dimensions.width.min, self.dimensions.height.min);

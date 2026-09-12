@@ -23,7 +23,7 @@ use serde::Serialize;
 use tiny_skia;
 
 use crate::bus::dbus_codegen::{self, OrgFreedesktopNotifications};
-use crate::config::ZeroTimeoutBehavior;
+use crate::config::{ZeroTimeoutBehavior, CONFIG};
 use crate::icons;
 use crate::maths_utility;
 use crate::Config;
@@ -328,7 +328,7 @@ impl Notification {
         // applications /love/ to send -- we need to escape ampersands and decode html entities.
         let mut summary = maths_utility::escape_decode(summary);
         let mut body = maths_utility::escape_decode(body);
-        if Config::get().trim_whitespace {
+        if CONFIG.load().trim_whitespace {
             summary = summary.trim().to_string();
             body = body.trim().to_string();
         }
@@ -475,7 +475,7 @@ impl Notification {
             percentage = None;
         }
 
-        let cfg = Config::get();
+        let cfg = CONFIG.load();
         let timeout = match cfg.zero_timeout_behavior {
             ZeroTimeoutBehavior::UseDefault => Timeout::Milliseconds(if expire_timeout <= 0 {
                 cfg.timeout

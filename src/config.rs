@@ -7,11 +7,16 @@ use std::{
     fmt::{self, Display, Formatter},
     io,
     path::PathBuf,
-    sync::mpsc::{self, Receiver},
+    sync::{
+        mpsc::{self, Receiver},
+        Arc,
+    },
     time::Duration,
 };
 
+use arc_swap::ArcSwap;
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
+use once_cell::sync::Lazy;
 use serde::{
     de::{self, Deserializer, Unexpected},
     Deserialize,
@@ -35,7 +40,8 @@ macro_rules! CONFIG_FILENAME {
         "wired.ron"
     };
 }
-static mut CONFIG: Option<Config> = None;
+
+pub(crate) static CONFIG: Lazy<ArcSwap<Config>> = Lazy::new(|| ArcSwap::from_pointee(Config::default()));
 
 #[derive(Debug)]
 pub enum Error {
@@ -219,14 +225,9 @@ impl Config {
     // and returns the watcher or None.
     pub fn init(custom_path: Option<PathBuf>) -> Option<ConfigWatcher> {
         fn assign_config(cfg: Config) {
-            unsafe {
-                CONFIG = Some(cfg);
-            }
+            CONFIG.store(Arc::new(cfg));
         }
 
-        unsafe {
-            assert!(CONFIG.is_none());
-        }
         let cfg_file = custom_path.or_else(Config::installed_config);
         match cfg_file {
             Some(f) => {
@@ -276,35 +277,13 @@ impl Config {
         }
     }
 
-    // Get immutable reference to global config variable.
-    pub fn get() -> &'static Config {
-        unsafe {
-            assert!(CONFIG.is_some());
-            // TODO: can as_ref be removed?
-            // This unwrap is safe according to the above assert.
-            CONFIG.as_ref().unwrap()
-        }
-    }
-
-    // Get mutable reference to global config variable.
-    pub fn get_mut() -> &'static mut Config {
-        unsafe {
-            assert!(CONFIG.is_some());
-            // TODO: can as_ref be removed?
-            // This unwrap is safe according to the above assert.
-            CONFIG.as_mut().unwrap()
-        }
-    }
-
     // Attempt to load the config again.
     // If we can, then replace the existing config.
     // If we can't, then do nothing.
     pub fn try_reload(path: PathBuf) -> bool {
         match Config::load_file(path) {
             Ok(cfg) => {
-                unsafe {
-                    CONFIG = Some(cfg);
-                }
+                CONFIG.store(Arc::new(cfg));
                 println!("Config reloaded.");
                 true
             }

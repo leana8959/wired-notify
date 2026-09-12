@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::config::{Color, Config, Padding};
+use crate::config::{Color, Config, Padding, CONFIG};
 use crate::maths_utility;
 use crate::maths_utility::{Rect, Vec2};
 use crate::rendering::{
@@ -102,7 +102,7 @@ impl DrawableLayoutElement for ProgressBlockParameters {
 
         window.context.set_operator(cairo::Operator::Over);
         // Debug, unpadded drawing, to help users.
-        if Config::get().debug {
+        if CONFIG.load().debug {
             maths_utility::debug_rect(
                 &window.context,
                 true,

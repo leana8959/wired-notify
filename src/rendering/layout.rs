@@ -4,10 +4,9 @@ use serde::Deserialize;
 
 use crate::{
     bus::dbus::{Notification, Urgency},
-    config::{AnchorPosition, Config},
+    config::{AnchorPosition, Config, CONFIG},
     maths_utility::{Rect, Vec2},
-    rendering::blocks::*,
-    rendering::window::NotifyWindow,
+    rendering::{blocks::*, window::NotifyWindow},
 };
 
 use wired_derive::DrawableLayoutElement;
@@ -33,8 +32,8 @@ pub struct LayoutBlock {
 
     // The most recent rect that has been drawn.
     // This is updated every draw, so should always be accurate.
-    #[serde(skip)]
-    pub cache_rect: Rect,
+    // #[serde(skip)]
+    // pub cache_rect: Rect,
     #[serde(skip)]
     pub hovered: bool,
 }
@@ -211,7 +210,7 @@ impl LayoutBlock {
         // @TODO: This isn't really the place to be resolving this issue.  It should probably
         // happen earlier instead of last-minute, or we should have a better distinction between
         // anchoring to a root block and anchoring to a child block.
-        let cfg = Config::get();
+        let cfg = CONFIG.load();
         let fixed = &Rect::new(
             parent_rect.x(),
             parent_rect.y(),
@@ -241,8 +240,8 @@ impl LayoutBlock {
             let mut acc_rect = accum_rect.union(&rect);
 
             // Draw debug rect around bounding box.
-            if Config::get().debug {
-                let c = &Config::get().debug_color;
+            if CONFIG.load().debug {
+                let c = &CONFIG.load().debug_color;
                 window.context.set_source_rgba(c.r, c.g, c.b, c.a);
                 window.context.set_line_width(1.0);
                 window
@@ -269,7 +268,7 @@ impl LayoutBlock {
             window.context.set_operator(cairo::Operator::Over);
         }
 
-        self.cache_rect = rect;
+        // self.cache_rect = rect;
         acc_rect
     }
 
@@ -314,9 +313,9 @@ impl LayoutBlock {
 
     pub fn check_and_send_click(&mut self, position: &Vec2, window: &NotifyWindow) -> bool {
         let mut dirty = false;
-        if self.cache_rect.contains_point(position) {
-            dirty |= self.params.clicked(window);
-        }
+        // if self.cache_rect.contains_point(position) {
+        //     dirty |= self.params.clicked(window);
+        // }
 
         for child in &mut self.children {
             dirty |= child.check_and_send_click(position, window);
@@ -327,15 +326,15 @@ impl LayoutBlock {
 
     pub fn check_and_send_hover(&mut self, position: &Vec2, window: &NotifyWindow) -> bool {
         let mut dirty = false;
-        // If we aren't hovered already, and we enter the rect, then send event.
-        // If we are hovered already, and we leave the rect, then send event.
-        if !self.hovered && self.cache_rect.contains_point(position) {
-            self.hovered = true;
-            dirty |= self.params.hovered(true, window);
-        } else if self.hovered && !self.cache_rect.contains_point(position) {
-            self.hovered = false;
-            dirty |= self.params.hovered(false, window);
-        }
+        // // If we aren't hovered already, and we enter the rect, then send event.
+        // // If we are hovered already, and we leave the rect, then send event.
+        // if !self.hovered && self.cache_rect.contains_point(position) {
+        //     self.hovered = true;
+        //     dirty |= self.params.hovered(true, window);
+        // } else if self.hovered && !self.cache_rect.contains_point(position) {
+        //     self.hovered = false;
+        //     dirty |= self.params.hovered(false, window);
+        // }
 
         for child in &mut self.children {
             dirty |= child.check_and_send_hover(position, window);

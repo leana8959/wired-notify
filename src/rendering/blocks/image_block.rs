@@ -54,11 +54,10 @@ pub struct ImageBlockParameters {
     pub min_width: i32,
     #[serde(default)]
     pub min_height: i32,
-
     // The process of resizing the image and changing colorspace is relatively expensive,
     // so we should cache it.
-    #[serde(skip)]
-    cached_surface: Option<ImageSurface>,
+    // #[serde(skip)]
+    // cached_surface: Option<ImageSurface>,
 }
 
 impl DrawableLayoutElement for ImageBlockParameters {
@@ -71,45 +70,45 @@ impl DrawableLayoutElement for ImageBlockParameters {
     ) -> Result<Rect, cairo::Error> {
         // `cached_surface` should always exist on notifications with images, because we always
         // cache it.  If-let is just a precaution here.
-        if let Some(ref img_sfc) = self.cached_surface {
-            let mut rect = Rect::new(
-                0.0,
-                0.0,
-                self.scale_width as f64 + self.padding.width(),
-                self.scale_height as f64 + self.padding.height(),
-            );
-            let pos = LayoutBlock::find_anchor_pos(hook, offset, parent_rect, &rect);
-            rect.set_xy(pos.x, pos.y);
+        //if let Some(ref img_sfc) = self.cached_surface {
+        //    let mut rect = Rect::new(
+        //        0.0,
+        //        0.0,
+        //        self.scale_width as f64 + self.padding.width(),
+        //        self.scale_height as f64 + self.padding.height(),
+        //    );
+        //    let pos = LayoutBlock::find_anchor_pos(hook, offset, parent_rect, &rect);
+        //    rect.set_xy(pos.x, pos.y);
 
-            let (x, y) = (pos.x + self.padding.left, pos.y + self.padding.top);
-            window.context.set_source_surface(img_sfc, x, y)?;
-            maths_utility::cairo_path_rounded_rectangle(
-                &window.context,
-                x,
-                y,
-                self.scale_width as f64,
-                self.scale_height as f64,
-                self.rounding,
-            )?;
-            //window.context.rectangle(x, y, self.scale_width as f64, self.scale_height as f64);
-            window.context.fill()?;
-            maths_utility::debug_rect(
-                &window.context,
-                true,
-                x,
-                y,
-                self.scale_width as f64,
-                self.scale_height as f64,
-            )?;
+        //    let (x, y) = (pos.x + self.padding.left, pos.y + self.padding.top);
+        //    window.context.set_source_surface(img_sfc, x, y)?;
+        //    maths_utility::cairo_path_rounded_rectangle(
+        //        &window.context,
+        //        x,
+        //        y,
+        //        self.scale_width as f64,
+        //        self.scale_height as f64,
+        //        self.rounding,
+        //    )?;
+        //    //window.context.rectangle(x, y, self.scale_width as f64, self.scale_height as f64);
+        //    window.context.fill()?;
+        //    maths_utility::debug_rect(
+        //        &window.context,
+        //        true,
+        //        x,
+        //        y,
+        //        self.scale_width as f64,
+        //        self.scale_height as f64,
+        //    )?;
 
-            Ok(rect)
-        } else {
-            let mut rect = Rect::new(0.0, 0.0, 0.0, 0.0);
-            let pos = LayoutBlock::find_anchor_pos(hook, offset, parent_rect, &rect);
-            rect.set_xy(pos.x, pos.y);
+        //    Ok(rect)
+        //} else {
+        let mut rect = Rect::new(0.0, 0.0, 0.0, 0.0);
+        let pos = LayoutBlock::find_anchor_pos(hook, offset, parent_rect, &rect);
+        rect.set_xy(pos.x, pos.y);
 
-            Ok(rect)
-        }
+        Ok(rect)
+        // }
     }
 
     fn predict_rect_and_init(
@@ -173,7 +172,7 @@ impl DrawableLayoutElement for ImageBlockParameters {
             )
             .expect("Failed to create image surface.");
 
-            self.cached_surface = Some(image_sfc);
+            // self.cached_surface = Some(image_sfc);
 
             rect.set_xy(pos.x, pos.y);
             rect

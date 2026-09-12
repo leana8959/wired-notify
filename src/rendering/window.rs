@@ -40,11 +40,10 @@ pub fn on_xwayland() -> bool {
 
 use crate::{
     bus::dbus::{Notification, Timeout},
-    config::Config,
+    config::{Config, CONFIG},
     manager::NotifyWindowManager,
     maths_utility::{Rect, Vec2},
-    rendering::layout::LayoutBlock,
-    rendering::text::TextRenderer,
+    rendering::{layout::LayoutBlock, text::TextRenderer},
 };
 
 // FuseOnly probably won't be used, but it's here for completion's sake.
@@ -101,7 +100,7 @@ impl NotifyWindow {
         mut layout: LayoutBlock,
         manager: &NotifyWindowManager,
     ) -> Self {
-        let cfg = Config::get();
+        let cfg = CONFIG.load();
         // The minimum window width and height is 1.0.  We need this size to generate an initial window.
         let (width, height) = (
             (cfg.min_window_width as f64).max(1.0),
@@ -243,7 +242,7 @@ impl NotifyWindow {
     }
 
     pub fn replace_notification(&mut self, new_notification: Notification, new_layout: LayoutBlock) {
-        let cfg = Config::get();
+        let cfg = CONFIG.load();
 
         self.notification = new_notification;
 

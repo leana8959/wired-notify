@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::bus::dbus::Notification;
-use crate::config::{Color, Config, Padding};
+use crate::config::{Color, Config, Padding, CONFIG};
 use crate::maths_utility;
 use crate::maths_utility::{MinMax, Rect, Vec2};
 use crate::rendering::{
@@ -95,7 +95,7 @@ impl DrawableLayoutElement for TextBlockParameters {
             .text
             .paint_padded(&window.context, &pos, col, &self.padding);
         // Debug, unpadded drawing, to help users.
-        if Config::get().debug {
+        if CONFIG.load().debug {
             let r = window
                 .text
                 .get_sized_rect(dimensions.width.min, dimensions.height.min);

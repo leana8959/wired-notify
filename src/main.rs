@@ -32,6 +32,8 @@ use config::Config;
 use home_dir::HomeDirExt;
 use manager::NotifyWindowManager;
 
+use crate::config::CONFIG;
+
 fn try_print_to_file(notification: &Notification, file: &mut File) {
     let json_string = match serde_json::to_string(&notification) {
         Ok(s) => s,
@@ -48,7 +50,7 @@ fn try_print_to_file(notification: &Notification, file: &mut File) {
 }
 
 fn open_print_file() -> Option<File> {
-    if let Some(filename) = Config::get().print_to_file.as_ref() {
+    if let Some(filename) = CONFIG.load().print_to_file.as_ref() {
         let maybe_path = PathBuf::from(filename).expand_home();
         let expanded_filename = match maybe_path {
             Ok(f) => f,
@@ -115,7 +117,7 @@ fn main() {
         .expect("Couldn't create an X11 event loop.");
     let mut manager = NotifyWindowManager::new(&event_loop);
 
-    let mut poll_interval = Duration::from_millis(Config::get().poll_interval);
+    let mut poll_interval = Duration::from_millis(CONFIG.load().poll_interval);
     let mut prev_instant = Instant::now();
 
     event_loop
@@ -145,7 +147,7 @@ fn main() {
                     if let Ok(msg) = receiver.try_recv() {
                         match msg {
                             Message::Close(id) => {
-                                if Config::get().closing_enabled {
+                                if CONFIG.load().closing_enabled {
                                     manager.drop_notification(id);
                                 }
                             }
@@ -163,10 +165,10 @@ fn main() {
                     if let Some(cw) = &maybe_watcher {
                         // Config was changed, update some internal stuff.
                         if cw.check_and_update_config() {
-                            poll_interval = Duration::from_millis(Config::get().poll_interval);
+                            poll_interval = Duration::from_millis(CONFIG.load().poll_interval);
                             maybe_print_file = open_print_file();
 
-                            if Config::get().notify_on_reload {
+                            if CONFIG.load().notify_on_reload {
                                 manager.replace_or_spawn(
                                     Notification::from_self(
                                         "Wired",
@@ -186,7 +188,7 @@ fn main() {
                         elwt.set_control_flow(ControlFlow::WaitUntil(now + poll_interval));
                     } else {
                         elwt.set_control_flow(ControlFlow::WaitUntil(
-                            now + Duration::from_millis(Config::get().idle_poll_interval),
+                            now + Duration::from_millis(CONFIG.load().idle_poll_interval),
                         ));
                     }
 

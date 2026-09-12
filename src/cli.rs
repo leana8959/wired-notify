@@ -9,7 +9,7 @@ use home_dir::HomeDirExt;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::WindowId;
 
-use crate::NotifyWindowManager;
+use crate::{NotifyEvent, NotifyWindowManager};
 
 pub const SOCKET_PATH: &str = "/tmp/wired.sock";
 
@@ -61,7 +61,11 @@ impl CLIListener {
         Ok(CLIListener { listener })
     }
 
-    pub fn process_messages(&self, manager: &mut NotifyWindowManager, el: &EventLoopWindowTarget<()>) {
+    pub fn process_messages(
+        &self,
+        manager: &mut NotifyWindowManager,
+        el: &EventLoopWindowTarget<NotifyEvent>,
+    ) {
         // Since we're non-blocking, mostly this is just std::io::ErrorKind::WouldBlock.
         // For other errors, we should probably inform users to aide debugging.
         // I don't love the idea of spamming stderr here, however.
@@ -110,7 +114,7 @@ fn get_window_id(arg: &str, manager: &NotifyWindowManager) -> Result<WindowId, C
 
 pub fn handle_socket_message(
     manager: &mut NotifyWindowManager,
-    el: &EventLoopWindowTarget<()>,
+    el: &EventLoopWindowTarget<NotifyEvent>,
     socket: &UnixStream,
 ) -> Result<(), CLIError> {
     let reader = BufReader::new(socket);

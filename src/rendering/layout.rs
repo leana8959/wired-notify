@@ -58,7 +58,7 @@ pub enum RenderCriteria {
     Not(Box<RenderCriteria>),
 }
 
-enum Logic {
+pub(crate) enum Logic {
     And,
     Or,
 }
@@ -111,7 +111,7 @@ pub(crate) fn criteria_matches(criteria: &RenderCriteria, notification: &Notific
     }
 }
 
-fn logic_matches(logic: Logic, criterion: &Vec<RenderCriteria>, notification: &Notification) -> bool {
+pub(crate) fn logic_matches(logic: Logic, criterion: &Vec<RenderCriteria>, notification: &Notification) -> bool {
     let mut result;
     match logic {
         Logic::And => {

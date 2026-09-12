@@ -25,7 +25,7 @@
 
     // // Alternative render criteria that will be checked against and allowed when dnd (do not disturb) is enabled.
     // // By default, urgency "critical" is allowed.
-    // dnd_allow_render_criteria: Urgency("critical"),
+    // dnd_allow_criteria: [Urgency("critical")],
 
     // The interval at which wired updates when no notifications/windows are present.
     //idle_poll_interval: 500,

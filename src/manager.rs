@@ -10,6 +10,7 @@ use winit::{
 };
 
 use crate::config::FollowMode;
+use crate::rendering::layout::{Logic, logic_matches};
 use crate::{
     //notification::Notification,
     bus,
@@ -19,7 +20,7 @@ use crate::{
     },
     config::Config,
     maths_utility::{self, Rect},
-    rendering::layout::{criteria_matches, LayoutBlock},
+    rendering::layout::LayoutBlock,
     rendering::window::{NotifyWindow, UpdateModes},
 };
 
@@ -144,7 +145,7 @@ impl NotifyWindowManager {
         }
 
         // Show nothing unless dnd allow criteria says so.
-        if self.dnd && !criteria_matches(&cfg.dnd_allow_render_criteria, &notification) {
+        if self.dnd && !logic_matches(Logic::Or, &cfg.dnd_allow_criteria, &notification) {
             return;
         }
 

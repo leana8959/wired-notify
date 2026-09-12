@@ -122,8 +122,8 @@ pub struct Config {
 
     // Alternative render criteria that will be checked against and allowed when dnd (do not disturb) is enabled.
     // By default, urgency "critical" is allowed.
-    #[serde(default = "Config::default_dnd_allow_render_criteria")]
-    pub dnd_allow_criteria: RenderCriteria,
+    #[serde(default = "Config::default_dnd_allow_criteria")]
+    pub dnd_allow_criteria: Vec<RenderCriteria>,
 
     // How to handle various DBus expire_timeout values
     #[serde(default)]
@@ -209,8 +209,8 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn default_dnd_allow_render_criteria() -> RenderCriteria {
-        RenderCriteria::Urgency("critical".to_owned())
+    pub fn default_dnd_allow_criteria() -> Vec<RenderCriteria> {
+        vec![RenderCriteria::Urgency("critical".to_owned())]
     }
 
     pub fn default_debug_color() -> Color {

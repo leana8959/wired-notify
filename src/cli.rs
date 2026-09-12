@@ -395,7 +395,7 @@ pub fn process_cli(args: Vec<String>) -> Result<ShouldRun, String> {
                     let mut reader = BufReader::new(&sock);
                     let mut buf = String::with_capacity(8);
                     reader.read_line(&mut buf)?;
-                    println!("dnd: {}", buf);
+                    println!("dnd:{}", buf);
                     Ok(())
                 })
                 .map_err(|e| e.to_string())?;

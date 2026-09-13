@@ -184,6 +184,10 @@ fn main() {
 
                 Event::UserEvent(uv) => match uv {
                     NotifyEvent::ConfigReload => {
+                        // Short poll interval because we have a notification, the config reload.
+                        elwt.set_control_flow(ControlFlow::WaitUntil(
+                            Instant::now() + Duration::from_millis(CONFIG.load().poll_interval),
+                        ));
                         manager.file_handle = open_print_file();
                         manager.replace_or_spawn(
                             Notification::from_self(

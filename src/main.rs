@@ -148,9 +148,6 @@ fn main() {
     event_loop
         .run_on_demand(|event, elwt| {
             match event {
-                Event::NewEvents(StartCause::Init) => {
-                    elwt.set_control_flow(ControlFlow::WaitUntil(Instant::now()))
-                }
                 Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                     let now = Instant::now();
 

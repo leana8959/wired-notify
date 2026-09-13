@@ -12,7 +12,7 @@ mod rendering;
 
 use std::io::{BufRead, BufReader, BufWriter};
 use std::os::unix::net::UnixStream;
-use std::thread;
+use std::thread::{self, sleep};
 use std::{
     env,
     fs::File,
@@ -36,7 +36,7 @@ use home_dir::HomeDirExt;
 use manager::NotifyWindowManager;
 
 use crate::bus::dbus::Timeout;
-use crate::cli::{handle_cli_command, parse_socket_message, CliCommand};
+use crate::cli::{handle_cli_command, CliCommand};
 use crate::config::CONFIG;
 use crate::NotifyEvent::DbusMessage;
 
@@ -86,7 +86,7 @@ fn open_print_file() -> Option<File> {
 pub enum NotifyEvent {
     ConfigReload,
     DbusMessage(bus::dbus::Message),
-    SocketCommand(Vec<CliCommand>, BufWriter<UnixStream>),
+    SocketCommand(CliCommand, UnixStream),
 }
 
 fn main() {
@@ -128,6 +128,10 @@ fn main() {
 
     let mut prev_instant = Instant::now();
 
+    // Allows us to receive messages from dbus.
+    let dbus_message_event = event_loop.create_proxy();
+    let _dbus_thread_handle = bus::dbus::init_dbus_thread(dbus_message_event);
+
     let config_update_event = event_loop.create_proxy();
     if let Some(cw) = maybe_config_watcher {
         thread::spawn(move || loop {
@@ -137,33 +141,33 @@ fn main() {
         });
     };
 
+    let socket_message_event = event_loop.create_proxy();
     if let Some(listener) = maybe_listener {
-        // TODO(leana8959): clean up this block
-        for rstream in listener.listener.incoming() {
-            let socket_io_event = event_loop.create_proxy();
-            thread::spawn(move || loop {
-                if let Ok(ref stream) = rstream {
-                    let reader = BufReader::new(stream);
-                    let commands = match parse_socket_message(reader) {
-                        Ok(cs) => cs,
-                        Err(e) => {
-                            eprintln!("Error while handling socket message: {:?}", e);
-                            vec![]
-                        }
-                    };
-                    let writer = BufWriter::new(stream.try_clone().expect("should clone socket"));
-                    match socket_io_event.send_event(NotifyEvent::SocketCommand(commands, writer)) {
-                        Ok(_) => {},
-                        Err(e) => eprintln!("Error while sending socket message to manager: {:?}", e),
-                    };
-                }
-            });
-        }
+        thread::spawn(move || {
+            for streamr in listener.listener.incoming() {
+                if let Ok(stream) = streamr {
+                    let reader = BufReader::new(&stream);
+                    for line in reader.lines().filter_map(|l| l.ok()) {
+                        if let Some((command, args)) = line.split_once(':') {
+                            let command = CliCommand {
+                                command: command.to_string(),
+                                arguments: args.to_string(),
+                            };
+                            match socket_message_event
+                                .send_event(NotifyEvent::SocketCommand(command, stream.try_clone().unwrap()))
+                            {
+                                Ok(_) => {}
+                                Err(e) => eprintln!("Error while handling socket message: {:?}", e),
+                            };
+                        } else {
+                            // eprintln!("Error while sending socket message to manager: {:?}", e);
+                            todo!();
+                        };
+                    }
+                };
+            }
+        });
     };
-
-    // Allows us to receive messages from dbus.
-    let dbus_message_event = event_loop.create_proxy();
-    let _dbus_thread_handle = bus::dbus::init_dbus_thread(dbus_message_event);
 
     event_loop
         .run_on_demand(|event, elwt| {
@@ -182,21 +186,12 @@ fn main() {
                     prev_instant = now;
                     manager.update(time_passed);
 
-                    // Restart timer for next loop.
-                    // If windows are being drawn, we refresh at the draw interval (assuming it is
-                    // lower) to have the most responsiveness.
-                    if manager.has_windows() {
-                        elwt.set_control_flow(ControlFlow::WaitUntil(
-                            now + Duration::from_millis(CONFIG.load().poll_interval),
-                        ));
-                    } else {
+                    // Long poll interval because there are no more notifications
+                    // A new notification will reduce this.
+                    if !manager.has_windows() {
                         elwt.set_control_flow(ControlFlow::WaitUntil(
                             now + Duration::from_millis(CONFIG.load().idle_poll_interval),
                         ));
-                    }
-
-                    if manager.should_exit {
-                        elwt.exit();
                     }
                 }
 
@@ -223,23 +218,31 @@ fn main() {
                     );
                 }
 
-                Event::UserEvent(DbusMessage(dbus_message)) => match dbus_message {
-                    Message::Close(id) => {
-                        if CONFIG.load().closing_enabled {
-                            manager.drop_notification(id);
+                Event::UserEvent(DbusMessage(dbus_message)) => {
+                    // Short poll interval because we might have new notifications.
+                    elwt.set_control_flow(ControlFlow::WaitUntil(
+                        Instant::now() + Duration::from_millis(CONFIG.load().poll_interval),
+                    ));
+
+                    match dbus_message {
+                        Message::Close(id) => {
+                            if CONFIG.load().closing_enabled {
+                                manager.drop_notification(id);
+                            }
+                        }
+                        Message::Notify(n) => {
+                            if let Some(print_file) = &mut manager.file_handle {
+                                try_print_to_file(&n, print_file);
+                            }
+
+                            manager.replace_or_spawn(n, elwt);
                         }
                     }
-                    Message::Notify(n) => {
-                        if let Some(print_file) = &mut manager.file_handle {
-                            try_print_to_file(&n, print_file);
-                        }
+                }
 
-                        manager.replace_or_spawn(n, elwt);
-                    }
-                },
-
-                Event::UserEvent(NotifyEvent::SocketCommand(commands, writer)) => {
-                    match handle_cli_command(&mut manager, elwt, commands, writer) {
+                Event::UserEvent(NotifyEvent::SocketCommand(command, stream)) => {
+                    let writer = BufWriter::new(stream);
+                    match handle_cli_command(&mut manager, elwt, command, writer) {
                         Ok(_) => {}
                         Err(e) => eprintln!("Error while handling received message: {:?}", e),
                     };

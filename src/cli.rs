@@ -57,7 +57,6 @@ impl CLIListener {
         }
 
         let listener = UnixListener::bind(socket_path).map_err(CLIError::Socket)?;
-        listener.set_nonblocking(true).map_err(CLIError::Socket)?;
         Ok(CLIListener { listener })
     }
 }
@@ -93,105 +92,79 @@ fn get_window_id(arg: &str, manager: &NotifyWindowManager) -> Result<WindowId, C
 
 #[derive(Debug)]
 pub struct CliCommand {
-    command: String,
-    arguments: String,
-}
-
-pub fn parse_socket_message(reader: impl BufRead) -> Result<Vec<CliCommand>, CLIError> {
-    let mut commands = vec![];
-
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-
-        println!("Received socket message: {}", line);
-        if let Some((command, args)) = line.split_once(':') {
-            commands.push(CliCommand {
-                command: command.to_string(),
-                arguments: args.to_string(),
-            });
-        } else {
-            return Err(CLIError::Parse("Malformed command."));
-        }
-    }
-
-    Ok(commands)
+    pub command: String,
+    pub arguments: String,
 }
 
 pub fn handle_cli_command(
     manager: &mut NotifyWindowManager,
     el: &EventLoopWindowTarget<NotifyEvent>,
-    commands: Vec<CliCommand>,
+    command: CliCommand,
     mut writer: impl Write,
 ) -> Result<(), CLIError> {
-    for CliCommand { command, arguments } in commands {
-        let command = command.as_ref();
-        let args = arguments.as_ref();
-        match command {
-            "drop" => {
-                if args == "all" {
-                    manager.drop_windows();
-                } else {
-                    let id = get_window_id(args, manager)?;
-                    manager.drop_window_id(id);
-                }
+    let CliCommand { command, arguments } = command;
+    let command = command.as_ref();
+    let args = arguments.as_ref();
+    match command {
+        "drop" => {
+            if args == "all" {
+                manager.drop_windows();
+            } else {
+                let id = get_window_id(args, manager)?;
+                manager.drop_window_id(id);
             }
-            "action" => {
-                let (notif_id, action_id) = args
-                    .split_once(',')
-                    .ok_or(CLIError::Parse("Malformed action request."))?;
-
-                let id = get_window_id(notif_id, manager)?;
-                let action = match action_id {
-                    "default" => 0,
-                    _ => action_id
-                        .parse::<usize>()
-                        .map_err(|_| CLIError::Parse("Value is not of type usize."))?,
-                };
-                manager.trigger_action_idx(id, action);
-            }
-            "show" => {
-                if let Some(arg) = args.strip_prefix("id") {
-                    let id = arg
-                        .parse::<u32>()
-                        .map_err(|_| CLIError::Parse("Value is not of type u32."))?;
-
-                    // Try to find a notification with that id.
-                    if let Some(n) = manager.history.pop(id) {
-                        manager.new_notification(n, el);
-                    } else {
-                        return Err(CLIError::NotificationNotFound);
-                    }
-                } else {
-                    let num = args
-                        .parse::<usize>()
-                        .map_err(|_| CLIError::Parse("Value is not of type usize."))?;
-
-                    for _ in 0..num {
-                        if let Some(n) = manager.history.pop_back() {
-                            manager.new_notification(n, el);
-                        }
-                    }
-                };
-            }
-            "dnd" => {
-                if ON_VALS.contains(&args) {
-                    manager.set_dnd(true);
-                } else if OFF_VALS.contains(&args) {
-                    manager.set_dnd(false);
-                }
-            }
-            "dnd-status" => match writeln!(writer, "{}", manager.get_dnd()).and_then(|_| writer.flush()) {
-                Ok(_) => (),
-                Err(e) => eprintln!("unable to respond to dnd-status request: {}", e),
-            },
-            "kill" => {
-                manager.should_exit = true;
-            }
-            _ => return Err(CLIError::InvalidCommand),
         }
+        "action" => {
+            let (notif_id, action_id) = args
+                .split_once(',')
+                .ok_or(CLIError::Parse("Malformed action request."))?;
+
+            let id = get_window_id(notif_id, manager)?;
+            let action = match action_id {
+                "default" => 0,
+                _ => action_id
+                    .parse::<usize>()
+                    .map_err(|_| CLIError::Parse("Value is not of type usize."))?,
+            };
+            manager.trigger_action_idx(id, action);
+        }
+        "show" => {
+            if let Some(arg) = args.strip_prefix("id") {
+                let id = arg
+                    .parse::<u32>()
+                    .map_err(|_| CLIError::Parse("Value is not of type u32."))?;
+
+                // Try to find a notification with that id.
+                if let Some(n) = manager.history.pop(id) {
+                    manager.new_notification(n, el);
+                } else {
+                    return Err(CLIError::NotificationNotFound);
+                }
+            } else {
+                let num = args
+                    .parse::<usize>()
+                    .map_err(|_| CLIError::Parse("Value is not of type usize."))?;
+
+                for _ in 0..num {
+                    if let Some(n) = manager.history.pop_back() {
+                        manager.new_notification(n, el);
+                    }
+                }
+            };
+        }
+        "dnd" => {
+            if ON_VALS.contains(&args) {
+                manager.set_dnd(true);
+            } else if OFF_VALS.contains(&args) {
+                manager.set_dnd(false);
+            }
+        }
+        "dnd-status" => match writeln!(writer, "{}", manager.get_dnd()).and_then(|_| writer.flush()) {
+            Ok(_) => (),
+            Err(e) => eprintln!("unable to respond to dnd-status request: {}", e),
+        },
+        "kill" => el.exit(),
+        _ => return Err(CLIError::InvalidCommand),
     }
 
     Ok(())

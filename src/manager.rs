@@ -68,7 +68,6 @@ pub struct NotifyWindowManager {
     pub layout_windows: HashMap<String, Vec<NotifyWindow>>,
     pub history: NotifyHistory,
     pub dirty: bool,
-    pub should_exit: bool,
 
     // Do not disturb.
     dnd: bool,
@@ -107,8 +106,6 @@ impl NotifyWindowManager {
             slow_update_timer: 0.0,
             last_idle_time: 0,
             active_monitor,
-
-            should_exit: false,
 
             file_handle: None,
         }

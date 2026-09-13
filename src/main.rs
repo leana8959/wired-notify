@@ -171,6 +171,8 @@ fn main() {
 
     event_loop
         .run_on_demand(|event, elwt| {
+            // eprintln!("got event {:?}", event);
+
             match event {
                 Event::NewEvents(StartCause::Init) => {
                     elwt.set_control_flow(ControlFlow::WaitUntil(Instant::now()))
@@ -189,8 +191,10 @@ fn main() {
                     // Long poll interval because there are no more notifications
                     // A new notification will reduce this.
                     if !manager.has_windows() {
+                        elwt.set_control_flow(ControlFlow::Wait);
+                    } else {
                         elwt.set_control_flow(ControlFlow::WaitUntil(
-                            now + Duration::from_millis(CONFIG.load().idle_poll_interval),
+                            Instant::now() + Duration::from_millis(CONFIG.load().poll_interval),
                         ));
                     }
                 }
@@ -234,7 +238,6 @@ fn main() {
                             if let Some(print_file) = &mut manager.file_handle {
                                 try_print_to_file(&n, print_file);
                             }
-
                             manager.replace_or_spawn(n, elwt);
                         }
                     }

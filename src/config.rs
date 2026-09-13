@@ -127,8 +127,6 @@ pub struct Config {
     pub max_notifications: usize,
     pub timeout: i32,       // Default timeout, in milliseconds.
     pub poll_interval: u64, // Time between checking for updates, events, drawing, etc.
-    #[serde(default = "maths_utility::val_500")]
-    pub idle_poll_interval: u64, // Same as above, but when no notifications are present.
     pub layout_blocks: Vec<LayoutBlock>,
 
     // Alternative render criteria that will be checked against and allowed when dnd (do not disturb) is enabled.

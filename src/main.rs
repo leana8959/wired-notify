@@ -10,9 +10,9 @@ mod manager;
 mod maths_utility;
 mod rendering;
 
-use std::io::{BufRead, BufReader, BufWriter};
+use std::io::BufWriter;
 use std::os::unix::net::UnixStream;
-use std::thread::{self, sleep};
+use std::thread::{self};
 use std::{
     env,
     fs::File,
@@ -38,7 +38,6 @@ use manager::NotifyWindowManager;
 use crate::bus::dbus::Timeout;
 use crate::cli::{handle_cli_command, CliCommand};
 use crate::config::CONFIG;
-use crate::NotifyEvent::DbusMessage;
 
 fn try_print_to_file(notification: &Notification, file: &mut File) {
     let json_string = match serde_json::to_string(&notification) {
@@ -112,7 +111,6 @@ fn main() {
     };
 
     let maybe_config_watcher = Config::init(config_path);
-
     let maybe_listener = cli::CLIListener::init().map_or_else(
         |e| {
             eprintln!("Couldn't init CLIListener: {:?}", e);
@@ -124,9 +122,6 @@ fn main() {
     let mut event_loop: EventLoop<NotifyEvent> = EventLoopBuilder::with_user_event()
         .build()
         .expect("Couldn't create an X11 event loop.");
-    let mut manager = NotifyWindowManager::new(&event_loop);
-
-    let mut prev_instant = Instant::now();
 
     // Allows us to receive messages from dbus.
     let dbus_message_event = event_loop.create_proxy();
@@ -143,9 +138,13 @@ fn main() {
 
     let socket_message_event = event_loop.create_proxy();
     if let Some(listener) = maybe_listener {
-        thread::spawn(move || { listener.handle(socket_message_event); });
+        thread::spawn(move || {
+            listener.handle(socket_message_event);
+        });
     };
 
+    let mut manager = NotifyWindowManager::new(&event_loop);
+    let mut prev_instant = Instant::now();
     event_loop
         .run_on_demand(|event, elwt| {
             match event {
@@ -199,7 +198,7 @@ fn main() {
                         );
                     }
 
-                    DbusMessage(dbus_message) => {
+                    NotifyEvent::DbusMessage(dbus_message) => {
                         // Short poll interval because we might have new notifications.
                         elwt.set_control_flow(ControlFlow::WaitUntil(
                             Instant::now() + Duration::from_millis(CONFIG.load().poll_interval),

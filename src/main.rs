@@ -171,8 +171,6 @@ fn main() {
 
     event_loop
         .run_on_demand(|event, elwt| {
-            // eprintln!("got event {:?}", event);
-
             match event {
                 Event::NewEvents(StartCause::Init) => {
                     elwt.set_control_flow(ControlFlow::WaitUntil(Instant::now()))
@@ -180,16 +178,13 @@ fn main() {
                 Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                     let now = Instant::now();
 
-                    // TODO: be smarter about looping when no notifications are present.
-                    // TODO: clean this loop up
-
                     // Time passed since last loop.
                     let time_passed = now - prev_instant;
                     prev_instant = now;
                     manager.update(time_passed);
 
-                    // Long poll interval because there are no more notifications
-                    // A new notification will reduce this.
+                    // Wait until the next notification because there are no more notifications.
+                    // A new notification will reduce this wait interval.
                     if !manager.has_windows() {
                         elwt.set_control_flow(ControlFlow::Wait);
                     } else {
@@ -214,42 +209,48 @@ fn main() {
                 } => elwt.exit(),
                 Event::WindowEvent { window_id, event, .. } => manager.process_event(window_id, event),
 
-                Event::UserEvent(NotifyEvent::ConfigReload) => {
-                    manager.file_handle = open_print_file();
-                    manager.replace_or_spawn(
-                        Notification::from_self("Wired", "Config was reloaded.", Timeout::Milliseconds(5000)),
-                        elwt,
-                    );
-                }
+                Event::UserEvent(uv) => match uv {
+                    NotifyEvent::ConfigReload => {
+                        manager.file_handle = open_print_file();
+                        manager.replace_or_spawn(
+                            Notification::from_self(
+                                "Wired",
+                                "Config was reloaded.",
+                                Timeout::Milliseconds(5000),
+                            ),
+                            elwt,
+                        );
+                    }
 
-                Event::UserEvent(DbusMessage(dbus_message)) => {
-                    // Short poll interval because we might have new notifications.
-                    elwt.set_control_flow(ControlFlow::WaitUntil(
-                        Instant::now() + Duration::from_millis(CONFIG.load().poll_interval),
-                    ));
+                    DbusMessage(dbus_message) => {
+                        // Short poll interval because we might have new notifications.
+                        elwt.set_control_flow(ControlFlow::WaitUntil(
+                            Instant::now() + Duration::from_millis(CONFIG.load().poll_interval),
+                        ));
 
-                    match dbus_message {
-                        Message::Close(id) => {
-                            if CONFIG.load().closing_enabled {
-                                manager.drop_notification(id);
+                        match dbus_message {
+                            Message::Close(id) => {
+                                if CONFIG.load().closing_enabled {
+                                    manager.drop_notification(id);
+                                }
                             }
-                        }
-                        Message::Notify(n) => {
-                            if let Some(print_file) = &mut manager.file_handle {
-                                try_print_to_file(&n, print_file);
+                            Message::Notify(n) => {
+                                if let Some(print_file) = &mut manager.file_handle {
+                                    try_print_to_file(&n, print_file);
+                                }
+                                manager.replace_or_spawn(n, elwt);
                             }
-                            manager.replace_or_spawn(n, elwt);
                         }
                     }
-                }
 
-                Event::UserEvent(NotifyEvent::SocketCommand(command, stream)) => {
-                    let writer = BufWriter::new(stream);
-                    match handle_cli_command(&mut manager, elwt, command, writer) {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("Error while handling received message: {:?}", e),
-                    };
-                }
+                    NotifyEvent::SocketCommand(command, stream) => {
+                        let writer = BufWriter::new(stream);
+                        match handle_cli_command(&mut manager, elwt, command, writer) {
+                            Ok(_) => {}
+                            Err(e) => eprintln!("Error while handling received message: {:?}", e),
+                        };
+                    }
+                },
 
                 // Poll continuously runs the event loop, even if the os hasn't dispatched any events.
                 // This is ideal for games and similar applications.

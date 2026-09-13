@@ -10,6 +10,8 @@ mod manager;
 mod maths_utility;
 mod rendering;
 
+use std::io::{BufRead, BufReader, BufWriter};
+use std::os::unix::net::UnixStream;
 use std::thread;
 use std::{
     env,
@@ -34,6 +36,7 @@ use home_dir::HomeDirExt;
 use manager::NotifyWindowManager;
 
 use crate::bus::dbus::Timeout;
+use crate::cli::{handle_cli_command, parse_socket_message, CliCommand};
 use crate::config::CONFIG;
 use crate::NotifyEvent::DbusMessage;
 
@@ -83,6 +86,7 @@ fn open_print_file() -> Option<File> {
 pub enum NotifyEvent {
     ConfigReload,
     DbusMessage(bus::dbus::Message),
+    SocketCommand(Vec<CliCommand>, BufWriter<UnixStream>),
 }
 
 fn main() {
@@ -133,6 +137,30 @@ fn main() {
         });
     };
 
+    if let Some(listener) = maybe_listener {
+        // TODO(leana8959): clean up this block
+        for rstream in listener.listener.incoming() {
+            let socket_io_event = event_loop.create_proxy();
+            thread::spawn(move || loop {
+                if let Ok(ref stream) = rstream {
+                    let reader = BufReader::new(stream);
+                    let commands = match parse_socket_message(reader) {
+                        Ok(cs) => cs,
+                        Err(e) => {
+                            eprintln!("Error while handling socket message: {:?}", e);
+                            vec![]
+                        }
+                    };
+                    let writer = BufWriter::new(stream.try_clone().expect("should clone socket"));
+                    match socket_io_event.send_event(NotifyEvent::SocketCommand(commands, writer)) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("Error while sending socket message to manager: {:?}", e),
+                    };
+                }
+            });
+        }
+    };
+
     // Allows us to receive messages from dbus.
     let dbus_message_event = event_loop.create_proxy();
     let _dbus_thread_handle = bus::dbus::init_dbus_thread(dbus_message_event);
@@ -153,12 +181,6 @@ fn main() {
                     let time_passed = now - prev_instant;
                     prev_instant = now;
                     manager.update(time_passed);
-
-                    // The polling timer for events is separate to drawing, for efficiency reasons.
-                    // Read wired socket signals, for cli stuff.
-                    if let Some(listener) = &maybe_listener {
-                        listener.process_messages(&mut manager, elwt);
-                    };
 
                     // Restart timer for next loop.
                     // If windows are being drawn, we refresh at the draw interval (assuming it is
@@ -215,6 +237,13 @@ fn main() {
                         manager.replace_or_spawn(n, elwt);
                     }
                 },
+
+                Event::UserEvent(NotifyEvent::SocketCommand(commands, writer)) => {
+                    match handle_cli_command(&mut manager, elwt, commands, writer) {
+                        Ok(_) => {}
+                        Err(e) => eprintln!("Error while handling received message: {:?}", e),
+                    };
+                }
 
                 // Poll continuously runs the event loop, even if the os hasn't dispatched any events.
                 // This is ideal for games and similar applications.

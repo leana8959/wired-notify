@@ -2,7 +2,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::AtomicU32;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -21,10 +20,12 @@ use chrono::{offset::Local, DateTime};
 use serde::Serialize;
 
 use tiny_skia;
+use winit::event_loop::EventLoopProxy;
 
+use crate::NotifyEvent::DbusMessage;
 use crate::bus::dbus_codegen::{self, OrgFreedesktopNotifications};
 use crate::config::{ZeroTimeoutBehavior, CONFIG};
-use crate::icons;
+use crate::{NotifyEvent, icons};
 use crate::maths_utility;
 
 static ID_COUNT: AtomicU32 = AtomicU32::new(1);
@@ -37,7 +38,7 @@ pub const PATH: &str = "/org/freedesktop/Notifications";
 static mut DBUS_CONN: Option<Connection> = None;
 
 pub struct Notify {
-    sender: Sender<Message>,
+    sender: EventLoopProxy<NotifyEvent>,
 }
 
 impl OrgFreedesktopNotifications for Notify {
@@ -103,14 +104,14 @@ impl OrgFreedesktopNotifications for Notify {
             expire_timeout,
         );
 
-        match self.sender.send(Message::Notify(notification)) {
+        match self.sender.send_event(DbusMessage(Message::Notify(notification))) {
             Ok(_) => Ok(id),
             Err(e) => Err(dbus::MethodErr::failed(&e)),
         }
     }
 
     fn close_notification(&mut self, id: u32) -> Result<(), dbus::MethodErr> {
-        match self.sender.send(Message::Close(id)) {
+        match self.sender.send_event(DbusMessage(Message::Close(id))) {
             Ok(_) => Ok(()),
             Err(e) => Err(dbus::MethodErr::failed(&e)),
         }
@@ -126,9 +127,7 @@ impl OrgFreedesktopNotifications for Notify {
     }
 }
 
-pub fn init_dbus_thread() -> (JoinHandle<()>, Receiver<Message>) {
-    let (sender, receiver) = mpsc::channel();
-
+pub fn init_dbus_thread( sender: EventLoopProxy<NotifyEvent> ) -> JoinHandle<()> {
     let c = Connection::new_session().expect("Failed to get a session bus");
     let reply = c
         .request_name("org.freedesktop.Notifications", false, true, false)
@@ -188,7 +187,7 @@ pub fn init_dbus_thread() -> (JoinHandle<()>, Receiver<Message>) {
     }
 
     let handle = thread::spawn(process_dbus);
-    (handle, receiver)
+    handle
 }
 
 // Check and process any dbus signals.
@@ -224,6 +223,7 @@ impl Default for Urgency {
 }
 
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
 pub enum Message {
     Close(u32),
     Notify(Notification),

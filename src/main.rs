@@ -35,6 +35,7 @@ use manager::NotifyWindowManager;
 
 use crate::bus::dbus::Timeout;
 use crate::config::CONFIG;
+use crate::NotifyEvent::DbusMessage;
 
 fn try_print_to_file(notification: &Notification, file: &mut File) {
     let json_string = match serde_json::to_string(&notification) {
@@ -81,6 +82,7 @@ fn open_print_file() -> Option<File> {
 #[derive(Debug)]
 pub enum NotifyEvent {
     ConfigReload,
+    DbusMessage(bus::dbus::Message),
 }
 
 fn main() {
@@ -115,9 +117,6 @@ fn main() {
         Some,
     );
 
-    // Allows us to receive messages from dbus.
-    let (_dbus_thread_handle, receiver) = bus::dbus::init_dbus_thread();
-
     let mut event_loop: EventLoop<NotifyEvent> = EventLoopBuilder::with_user_event()
         .build()
         .expect("Couldn't create an X11 event loop.");
@@ -133,6 +132,10 @@ fn main() {
             }
         });
     };
+
+    // Allows us to receive messages from dbus.
+    let dbus_message_event = event_loop.create_proxy();
+    let _dbus_thread_handle = bus::dbus::init_dbus_thread(dbus_message_event);
 
     event_loop
         .run_on_demand(|event, elwt| {
@@ -156,24 +159,6 @@ fn main() {
                     if let Some(listener) = &maybe_listener {
                         listener.process_messages(&mut manager, elwt);
                     };
-
-                    // Receives `Notification`s from dbus.
-                    if let Ok(msg) = receiver.try_recv() {
-                        match msg {
-                            Message::Close(id) => {
-                                if CONFIG.load().closing_enabled {
-                                    manager.drop_notification(id);
-                                }
-                            }
-                            Message::Notify(n) => {
-                                if let Some(print_file) = &mut manager.file_handle {
-                                    try_print_to_file(&n, print_file);
-                                }
-
-                                manager.replace_or_spawn(n, elwt);
-                            }
-                        }
-                    }
 
                     // Restart timer for next loop.
                     // If windows are being drawn, we refresh at the draw interval (assuming it is
@@ -215,6 +200,21 @@ fn main() {
                         elwt,
                     );
                 }
+
+                Event::UserEvent(DbusMessage(dbus_message)) => match dbus_message {
+                    Message::Close(id) => {
+                        if CONFIG.load().closing_enabled {
+                            manager.drop_notification(id);
+                        }
+                    }
+                    Message::Notify(n) => {
+                        if let Some(print_file) = &mut manager.file_handle {
+                            try_print_to_file(&n, print_file);
+                        }
+
+                        manager.replace_or_spawn(n, elwt);
+                    }
+                },
 
                 // Poll continuously runs the event loop, even if the os hasn't dispatched any events.
                 // This is ideal for games and similar applications.

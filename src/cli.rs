@@ -6,7 +6,7 @@ use std::process;
 
 use getopts::Options;
 use home_dir::HomeDirExt;
-use winit::event_loop::EventLoopWindowTarget;
+use winit::event_loop::{EventLoopProxy, EventLoopWindowTarget};
 use winit::window::WindowId;
 
 use crate::{NotifyEvent, NotifyWindowManager};
@@ -58,6 +58,29 @@ impl CLIListener {
 
         let listener = UnixListener::bind(socket_path).map_err(CLIError::Socket)?;
         Ok(CLIListener { listener })
+    }
+
+    pub fn handle(self: &Self, sender: EventLoopProxy<NotifyEvent>) {
+        for streamr in self.listener.incoming() {
+            if let Ok(stream) = streamr {
+                let reader = BufReader::new(&stream);
+                for line in reader.lines().filter_map(|l| l.ok()) {
+                    let (command, args) = line.split_once(':').expect(&format!(
+                        "The command `{}` is malformed, the programmer messed something up.",
+                        line
+                    ));
+                    let command = CliCommand {
+                        command: command.to_string(),
+                        arguments: args.to_string(),
+                    };
+                    match sender.send_event(NotifyEvent::SocketCommand(command, stream.try_clone().unwrap()))
+                    {
+                        Ok(_) => {}
+                        Err(e) => eprintln!("Error while handling socket message: {:?}", e),
+                    };
+                }
+            };
+        }
     }
 }
 

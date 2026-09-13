@@ -143,30 +143,7 @@ fn main() {
 
     let socket_message_event = event_loop.create_proxy();
     if let Some(listener) = maybe_listener {
-        thread::spawn(move || {
-            for streamr in listener.listener.incoming() {
-                if let Ok(stream) = streamr {
-                    let reader = BufReader::new(&stream);
-                    for line in reader.lines().filter_map(|l| l.ok()) {
-                        if let Some((command, args)) = line.split_once(':') {
-                            let command = CliCommand {
-                                command: command.to_string(),
-                                arguments: args.to_string(),
-                            };
-                            match socket_message_event
-                                .send_event(NotifyEvent::SocketCommand(command, stream.try_clone().unwrap()))
-                            {
-                                Ok(_) => {}
-                                Err(e) => eprintln!("Error while handling socket message: {:?}", e),
-                            };
-                        } else {
-                            // eprintln!("Error while sending socket message to manager: {:?}", e);
-                            todo!();
-                        };
-                    }
-                };
-            }
-        });
+        thread::spawn(move || { listener.handle(socket_message_event); });
     };
 
     event_loop
